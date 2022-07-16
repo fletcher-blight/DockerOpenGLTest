@@ -124,15 +124,28 @@ int main()
 
         GLint const mvpID = glGetUniformLocation(programID, "mvp");
 
-        glm::mat4 const model = glm::translate(glm::mat4(1.f), glm::vec3(2, -.5f, 0));
-        glm::mat4 const model2 = glm::translate(glm::mat4(1.f), glm::vec3(-2, .5f, 0)) * glm::rotate(glm::radians(70.f), glm::vec3(0, 1, 0));
+        glm::mat4 const view = glm::lookAt(glm::vec3(0, 5, -20), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+        glm::mat4 const projection = glm::perspective(glm::radians(75.f), static_cast<float>(windowWidth) / windowHeight, 0.1f, 100.f);
 
-        glm::mat4 const view = glm::lookAt(glm::vec3(3, 4, -5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
-        glm::mat4 const projection = glm::perspective(glm::radians(45.f), static_cast<float>(windowWidth) / windowHeight, 0.1f, 100.f);
-        glm::mat4 const mvp = projection * view * model;
-        glm::mat4 const mvp2 = projection * view * model2;
+        constexpr std::array pyramidVertexData = {
+            1.f, -1.f, 0.f,
+            0.f, -1.f, 1.f,
+            0.f, 1.f, 0.f,
 
-        constexpr std::array vertexBufferData = {
+            1.f, -1.f, 0.f,
+            0.f, -1.f, -1.f,
+            0.f, 1.f, 0.f,
+
+            0.f, -1.f, 1.f,
+            -1.f, -1.f, 0.f,
+            0.f, 1.f, 0.f,
+
+            -1.f, -1.f, 0.f,
+            0.f, -1.f, -1.f,
+            0.f, 1.f, 0.f,
+        };
+
+        constexpr std::array cubeVertexData = {
             -1.0f,-1.0f,-1.0f,
             -1.0f,-1.0f, 1.0f,
             -1.0f, 1.0f, 1.0f,
@@ -170,6 +183,7 @@ int main()
             -1.0f, 1.0f, 1.0f,
             1.0f,-1.0f, 1.0f
         };
+
         constexpr std::array colourBufferData = {
             0.583f,  0.771f,  0.014f,
             0.609f,  0.115f,  0.436f,
@@ -209,31 +223,17 @@ int main()
             0.982f,  0.099f,  0.879f,
         };
 
-        constexpr std::array vertex2BufferData = {
-            -1.f, -1.f, 0.f,
-            1.f, -1.f, 0.f,
-            0.f, 1.f, -.5f,
-
-            -1.f, -1.f, 0.f,
-            0.f, -1.f, -1.732f,
-            0.f, 1.f, -.5f,
-
-            1.f, -1.f, 0.f,
-            0.f, -1.f, -1.732f,
-            0.f, 1.f, -.5f,
-        };
-
         // Create Buffers
 
-        GLuint vertexBuffer;
-        glGenBuffers(1, &vertexBuffer);
-        glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(vertexBufferData), vertexBufferData.data(), GL_STATIC_DRAW);
+        GLuint cubeVertex;
+        glGenBuffers(1, &cubeVertex);
+        glBindBuffer(GL_ARRAY_BUFFER, cubeVertex);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVertexData), cubeVertexData.data(), GL_STATIC_DRAW);
 
-        GLuint vertex2Buffer;
-        glGenBuffers(1, &vertex2Buffer);
-        glBindBuffer(GL_ARRAY_BUFFER, vertex2Buffer);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(vertex2BufferData), vertex2BufferData.data(), GL_STATIC_DRAW);
+        GLuint pyramidVertex;
+        glGenBuffers(1, &pyramidVertex);
+        glBindBuffer(GL_ARRAY_BUFFER, pyramidVertex);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(pyramidVertexData), pyramidVertexData.data(), GL_STATIC_DRAW);
 
         GLuint colourBuffer;
         glGenBuffers(1, &colourBuffer);
@@ -243,50 +243,65 @@ int main()
         // Draw To Screen
 
         glClearColor(0.0f, 0.0f, 0.4f, 0.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glUseProgram(programID);
 
-        {
-            glEnableVertexAttribArray(0);
-            glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
-
-            glEnableVertexAttribArray(1);
-            glBindBuffer(GL_ARRAY_BUFFER, colourBuffer);
-            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
-
-            glUniformMatrix4fv(mvpID, 1, GL_FALSE, &mvp[0][0]);
-            glDrawArrays(GL_TRIANGLES, 0, vertexBufferData.size() / 3);
-            glDisableVertexAttribArray(0);
-            glDisableVertexAttribArray(1);
-        }
-        {
-            glEnableVertexAttribArray(0);
-            glBindBuffer(GL_ARRAY_BUFFER, vertex2Buffer);
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
-
-            glEnableVertexAttribArray(1);
-            glBindBuffer(GL_ARRAY_BUFFER, colourBuffer);
-            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
-
-            glUniformMatrix4fv(mvpID, 1, GL_FALSE, &mvp2[0][0]);
-            glDrawArrays(GL_TRIANGLES, 0, vertex2BufferData.size() / 3);
-            glDisableVertexAttribArray(0);
-            glDisableVertexAttribArray(1);
-        }
-
-        glfwSwapBuffers(window);
-
-        // Event Poll
+        float rotationAngle = 0.f;
 
         glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
         while (glfwWindowShouldClose(window) == 0 && glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS)
         {
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glUseProgram(programID);
+
+            rotationAngle += 0.4f;
+            float const scaleMag = (std::sin(glm::radians(rotationAngle)) * 3.f) + 4;
+            float const zMag = (std::cos(glm::radians(rotationAngle)) * 10.f) + 5;
+
+            glm::mat4 const scale = glm::scale(glm::mat4(1.f), glm::vec3(scaleMag, scaleMag, scaleMag));
+            glm::mat4 const rotation = glm::rotate(glm::radians(rotationAngle), glm::vec3(0, 1, 0));
+
+            glm::mat4 const cubeTrans = glm::translate(glm::mat4(1.f), glm::vec3(10, 0, zMag));
+            glm::mat4 const pyramidTrans = glm::translate(glm::mat4(1.f), glm::vec3(-10, 0, zMag));
+
+            {
+                glm::mat4 const mvp = projection * view * (cubeTrans * rotation * scale);
+
+                glEnableVertexAttribArray(0);
+                glBindBuffer(GL_ARRAY_BUFFER, cubeVertex);
+                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+
+                glEnableVertexAttribArray(1);
+                glBindBuffer(GL_ARRAY_BUFFER, colourBuffer);
+                glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+
+                glUniformMatrix4fv(mvpID, 1, GL_FALSE, &mvp[0][0]);
+                glDrawArrays(GL_TRIANGLES, 0, cubeVertexData.size() / 3);
+                glDisableVertexAttribArray(0);
+                glDisableVertexAttribArray(1);
+            }
+            {
+                glm::mat4 const mvp = projection * view * (pyramidTrans * rotation * scale);
+
+                glEnableVertexAttribArray(0);
+                glBindBuffer(GL_ARRAY_BUFFER, pyramidVertex);
+                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+
+                glEnableVertexAttribArray(1);
+                glBindBuffer(GL_ARRAY_BUFFER, colourBuffer);
+                glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+
+                glUniformMatrix4fv(mvpID, 1, GL_FALSE, &mvp[0][0]);
+                glDrawArrays(GL_TRIANGLES, 0, pyramidVertexData.size() / 3);
+                glDisableVertexAttribArray(0);
+                glDisableVertexAttribArray(1);
+            }
+
+            glfwSwapBuffers(window);
+
             glfwPollEvents();
         }
 
-       	glDeleteBuffers(1, &vertexBuffer);
-        glDeleteBuffers(1, &vertex2Buffer);
+       	glDeleteBuffers(1, &cubeVertex);
+        glDeleteBuffers(1, &pyramidVertex);
        	glDeleteBuffers(1, &colourBuffer);
        	glDeleteProgram(programID);
        	glDeleteVertexArrays(1, &vertexArrayID);
