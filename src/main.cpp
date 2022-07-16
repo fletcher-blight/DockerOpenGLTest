@@ -1,143 +1,167 @@
-// Include standard headers
-#include <stdio.h>
-#include <stdlib.h>
-
-// Include GLEW
 #include <GL/glew.h>
-
-// Include GLFW
 #include <GLFW/glfw3.h>
-GLFWwindow* window;
-
-// Include GLM
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-using namespace glm;
 
-#include "shader.hpp"
+#include <fmt/format.h>
+#include <array>
+#include <string_view>
 
-int main( void )
+static void GLFWErrorHandler(int const errorCode, char const* const description) noexcept(false)
 {
-	// Initialise GLFW
-	if( !glfwInit() )
-	{
-		fprintf( stderr, "Failed to initialize GLFW\n" );
-		getchar();
-		return -1;
-	}
+    throw std::runtime_error(fmt::format("GLFW Error ({}): {}", errorCode, description));
+}
 
-	glfwWindowHint(GLFW_SAMPLES, 4);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // To make MacOS happy; should not be needed
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); //We don't want the old OpenGL
+static void CompileShader(GLuint const shaderID, std::string_view const shaderCode)
+{
+    char const* shaderCodePtr = shaderCode.data();
+    glShaderSource(shaderID, 1, &shaderCodePtr, nullptr);
+    glCompileShader(shaderID);
 
-	// Open a window and create its OpenGL context
-	window = glfwCreateWindow( 1024, 768, "Tutorial 03 - Matrices", NULL, NULL);
-	if( window == NULL ){
-		fprintf( stderr, "Failed to open GLFW window. If you have an Intel GPU, they are not 3.3 compatible. Try the 2.1 version of the tutorials.\n" );
-		getchar();
-		glfwTerminate();
-		return -1;
-	}
-	glfwMakeContextCurrent(window);
+    GLint result = GL_FALSE;
+    int logLength = 0;
+    glGetShaderiv(shaderID, GL_COMPILE_STATUS, &result);
+    glGetShaderiv(shaderID, GL_INFO_LOG_LENGTH, &logLength);
 
-	// Initialize GLEW
-	glewExperimental = true; // Needed for core profile
-	if (glewInit() != GLEW_OK) {
-		fprintf(stderr, "Failed to initialize GLEW\n");
-		getchar();
-		glfwTerminate();
-		return -1;
-	}
+    if (logLength != 0)
+    {
+        auto errorMessage = std::string(logLength, '\0');
+        glGetShaderInfoLog(shaderID, logLength, nullptr, errorMessage.data());
+        throw std::runtime_error(fmt::format("Shader Compilation Failed ({}): {}", result, errorMessage));
+    }
+}
 
-	// Ensure we can capture the escape key being pressed below
-	glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
+template <size_t N>
+static void LinkShaders(GLuint const programID, std::array<GLuint, N> shaderIDs)
+{
+    for (GLuint const shaderID : shaderIDs)
+        glAttachShader(programID, shaderID);
 
-	// Dark blue background
-	glClearColor(0.0f, 0.0f, 0.4f, 0.0f);
+    glLinkProgram(programID);
 
-	GLuint VertexArrayID;
-	glGenVertexArrays(1, &VertexArrayID);
-	glBindVertexArray(VertexArrayID);
+    GLint result = GL_FALSE;
+    int logLength = 0;
+    glGetProgramiv(programID, GL_LINK_STATUS, &result);
+    glGetProgramiv(programID, GL_INFO_LOG_LENGTH, &logLength);
 
-	// Create and compile our GLSL program from the shaders
-    GLuint programID = LoadShaders( "SimpleVertexShader.vertexshader", "SimpleFragmentShader.fragmentshader" );
+    if (logLength != 0)
+    {
+        auto errorMessage = std::string(logLength, '\0');
+        glGetProgramInfoLog(programID, logLength, nullptr, errorMessage.data());
+        throw std::runtime_error(fmt::format("Program Linking Failed ({}): {}", result, errorMessage));
+    }
 
-	// Get a handle for our "MVP" uniform
-	GLuint MatrixID = glGetUniformLocation(programID, "MVP");
+    for (GLuint const shaderID : shaderIDs) {
+        glDetachShader(programID, shaderID);
+        glDeleteShader(shaderID);
+    }
+}
 
-	// Projection matrix : 45� Field of View, 4:3 ratio, display range : 0.1 unit <-> 100 units
-	glm::mat4 Projection = glm::perspective(glm::radians(45.0f), 4.0f / 3.0f, 0.1f, 100.0f);
-	// Or, for an ortho camera :
-	//glm::mat4 Projection = glm::ortho(-10.0f,10.0f,-10.0f,10.0f,0.0f,100.0f); // In world coordinates
+static constexpr std::string_view vertexShaderCode = R"""(
+#version 330 core
 
-	// Camera matrix
-	glm::mat4 View       = glm::lookAt(
-								glm::vec3(4,3,3), // Camera is at (4,3,3), in World Space
-								glm::vec3(0,0,0), // and looks at the origin
-								glm::vec3(0,1,0)  // Head is up (set to 0,-1,0 to look upside-down)
-						   );
-	// Model matrix : an identity matrix (model will be at the origin)
-	glm::mat4 Model      = glm::mat4(1.0f);
-	// Our ModelViewProjection : multiplication of our 3 matrices
-	glm::mat4 MVP        = Projection * View * Model; // Remember, matrix multiplication is the other way around
+layout(location = 0) in vec3 modelSpace;
 
-	static const GLfloat g_vertex_buffer_data[] = {
-		-1.0f, -1.0f, 0.0f,
-		 1.0f, -1.0f, 0.0f,
-		 0.0f,  1.0f, 0.0f,
-	};
+uniform mat4 mvp;
 
-	GLuint vertexbuffer;
-	glGenBuffers(1, &vertexbuffer);
-	glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(g_vertex_buffer_data), g_vertex_buffer_data, GL_STATIC_DRAW);
+void main() {
+    gl_Position = mvp * vec4(modelSpace, 1);
+}
+)""";
 
-	do{
+static constexpr std::string_view fragmentShaderCode = R"""(
+#version 330 core
 
-		// Clear the screen
-		glClear( GL_COLOR_BUFFER_BIT );
+out vec3 color;
 
-		// Use our shader
-		glUseProgram(programID);
+void main() {
+    color = vec3(1,0,0);
+}
+)""";
 
-		// Send our transformation to the currently bound shader,
-		// in the "MVP" uniform
-		glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
+int main()
+{
+    try
+    {
+        glewExperimental = GL_TRUE;
+        glfwSetErrorCallback(GLFWErrorHandler);
+        glfwInit();
 
-		// 1rst attribute buffer : vertices
-		glEnableVertexAttribArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
-		glVertexAttribPointer(
-			0,                  // attribute. No particular reason for 0, but must match the layout in the shader.
-			3,                  // size
-			GL_FLOAT,           // type
-			GL_FALSE,           // normalized?
-			0,                  // stride
-			(void*)0            // array buffer offset
-		);
+        glfwWindowHint(GLFW_SAMPLES, 1);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-		// Draw the triangle !
-		glDrawArrays(GL_TRIANGLES, 0, 3); // 3 indices starting at 0 -> 1 triangle
+        uint16_t const windowWidth = 1920;
+        uint16_t const windowHeight = 1080;
+        GLFWwindow* const window = glfwCreateWindow(windowWidth, windowHeight, "OpenGLTest", nullptr, nullptr);
+        glfwMakeContextCurrent(window);
 
-		glDisableVertexAttribArray(0);
+        glewExperimental = GL_TRUE;
+        if (GLenum const res = glewInit(); res != GLEW_OK)
+            throw std::runtime_error(reinterpret_cast<char const*>(glewGetErrorString(res)));
 
-		// Swap buffers
-		glfwSwapBuffers(window);
-		glfwPollEvents();
+        GLuint vertexArrayID;
+        glGenVertexArrays(1, &vertexArrayID);
+        glBindVertexArray(vertexArrayID);
 
-	} // Check if the ESC key was pressed or the window was closed
-	while( glfwGetKey(window, GLFW_KEY_ESCAPE ) != GLFW_PRESS &&
-		   glfwWindowShouldClose(window) == 0 );
+        GLuint const programID = glCreateProgram();
+        GLuint const vertexShaderID = glCreateShader(GL_VERTEX_SHADER);
+        GLuint const fragmentShaderID = glCreateShader(GL_FRAGMENT_SHADER);
 
-	// Cleanup VBO and shader
-	glDeleteBuffers(1, &vertexbuffer);
-	glDeleteProgram(programID);
-	glDeleteVertexArrays(1, &VertexArrayID);
+        CompileShader(vertexShaderID, vertexShaderCode);
+        CompileShader(fragmentShaderID, fragmentShaderCode);
+        LinkShaders(programID, std::array{ vertexShaderID, fragmentShaderID });
 
-	// Close OpenGL window and terminate GLFW
-	glfwTerminate();
+        GLint const mvpID = glGetUniformLocation(programID, "mvp");
 
-	return 0;
+        glm::mat4 const model = glm::mat4(1.f);
+        glm::mat4 const view = glm::lookAt(glm::vec3(0, 0, -5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+        glm::mat4 const projection = glm::perspective(glm::radians(45.f), static_cast<float>(windowWidth) / windowHeight, 0.1f, 100.f);
+        glm::mat4 const mvp = projection * view * model;
+
+        glClearColor(0.0f, 0.0f, 0.4f, 0.0f);
+
+        constexpr std::array vertexBufferData = {
+            -1.f, -1.f, 0.f,
+            1.f, -1.f, 0.f,
+            0.f, 1.f, 0.0f,
+
+            -1.f, -1.f, 0.f,
+            0.f, 1.f, 0.0f,
+            0.f, -1.f, -1.41f,
+
+            1.f, -1.f, 0.f,
+            0.f, 1.f, 0.0f,
+            0.f, -1.f, -1.41f,
+        };
+
+        GLuint vertexBuffer;
+        glGenBuffers(1, &vertexBuffer);
+        glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertexBufferData), vertexBufferData.data(), GL_STATIC_DRAW);
+
+        glClear(GL_COLOR_BUFFER_BIT);
+        glUseProgram(programID);
+        glUniformMatrix4fv(mvpID, 1, GL_FALSE, &mvp[0][0]);
+
+        glEnableVertexAttribArray(0);
+        glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+        glDrawArrays(GL_TRIANGLES, 0, vertexBufferData.size() / 3);
+        glDisableVertexAttribArray(0);
+        glfwSwapBuffers(window);
+
+        glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
+        while (glfwWindowShouldClose(window) == 0 && glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS)
+        {
+            glfwPollEvents();
+        }
+    }
+    catch (std::exception const& e)
+    {
+        fmt::print(stderr, "Fatal Death: {}\n", e.what());
+    }
+
+    glfwTerminate();
 }
