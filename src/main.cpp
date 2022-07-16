@@ -2,6 +2,7 @@
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/transform.hpp>
 
 #include <fmt/format.h>
 #include <array>
@@ -61,21 +62,26 @@ static constexpr std::string_view vertexShaderCode = R"""(
 #version 330 core
 
 layout(location = 0) in vec3 modelSpace;
+layout(location = 1) in vec3 vertexColour;
+
+out vec3 fragmentColour;
 
 uniform mat4 mvp;
 
 void main() {
     gl_Position = mvp * vec4(modelSpace, 1);
+    fragmentColour = vertexColour;
 }
 )""";
 
 static constexpr std::string_view fragmentShaderCode = R"""(
 #version 330 core
 
-out vec3 color;
+in vec3 fragmentColour;
+out vec3 colour;
 
 void main() {
-    color = vec3(1,0,0);
+    colour = fragmentColour;
 }
 )""";
 
@@ -101,6 +107,9 @@ int main()
         if (GLenum const res = glewInit(); res != GLEW_OK)
             throw std::runtime_error(reinterpret_cast<char const*>(glewGetErrorString(res)));
 
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);
+
         GLuint vertexArrayID;
         glGenVertexArrays(1, &vertexArrayID);
         glBindVertexArray(vertexArrayID);
@@ -115,48 +124,172 @@ int main()
 
         GLint const mvpID = glGetUniformLocation(programID, "mvp");
 
-        glm::mat4 const model = glm::mat4(1.f);
-        glm::mat4 const view = glm::lookAt(glm::vec3(0, 0, -5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+        glm::mat4 const model = glm::translate(glm::mat4(1.f), glm::vec3(2, -.5f, 0));
+        glm::mat4 const model2 = glm::translate(glm::mat4(1.f), glm::vec3(-2, .5f, 0)) * glm::rotate(glm::radians(70.f), glm::vec3(0, 1, 0));
+
+        glm::mat4 const view = glm::lookAt(glm::vec3(3, 4, -5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
         glm::mat4 const projection = glm::perspective(glm::radians(45.f), static_cast<float>(windowWidth) / windowHeight, 0.1f, 100.f);
         glm::mat4 const mvp = projection * view * model;
-
-        glClearColor(0.0f, 0.0f, 0.4f, 0.0f);
+        glm::mat4 const mvp2 = projection * view * model2;
 
         constexpr std::array vertexBufferData = {
-            -1.f, -1.f, 0.f,
-            1.f, -1.f, 0.f,
-            0.f, 1.f, 0.0f,
-
-            -1.f, -1.f, 0.f,
-            0.f, 1.f, 0.0f,
-            0.f, -1.f, -1.41f,
-
-            1.f, -1.f, 0.f,
-            0.f, 1.f, 0.0f,
-            0.f, -1.f, -1.41f,
+            -1.0f,-1.0f,-1.0f,
+            -1.0f,-1.0f, 1.0f,
+            -1.0f, 1.0f, 1.0f,
+            1.0f, 1.0f,-1.0f,
+            -1.0f,-1.0f,-1.0f,
+            -1.0f, 1.0f,-1.0f,
+            1.0f,-1.0f, 1.0f,
+            -1.0f,-1.0f,-1.0f,
+            1.0f,-1.0f,-1.0f,
+            1.0f, 1.0f,-1.0f,
+            1.0f,-1.0f,-1.0f,
+            -1.0f,-1.0f,-1.0f,
+            -1.0f,-1.0f,-1.0f,
+            -1.0f, 1.0f, 1.0f,
+            -1.0f, 1.0f,-1.0f,
+            1.0f,-1.0f, 1.0f,
+            -1.0f,-1.0f, 1.0f,
+            -1.0f,-1.0f,-1.0f,
+            -1.0f, 1.0f, 1.0f,
+            -1.0f,-1.0f, 1.0f,
+            1.0f,-1.0f, 1.0f,
+            1.0f, 1.0f, 1.0f,
+            1.0f,-1.0f,-1.0f,
+            1.0f, 1.0f,-1.0f,
+            1.0f,-1.0f,-1.0f,
+            1.0f, 1.0f, 1.0f,
+            1.0f,-1.0f, 1.0f,
+            1.0f, 1.0f, 1.0f,
+            1.0f, 1.0f,-1.0f,
+            -1.0f, 1.0f,-1.0f,
+            1.0f, 1.0f, 1.0f,
+            -1.0f, 1.0f,-1.0f,
+            -1.0f, 1.0f, 1.0f,
+            1.0f, 1.0f, 1.0f,
+            -1.0f, 1.0f, 1.0f,
+            1.0f,-1.0f, 1.0f
         };
+        constexpr std::array colourBufferData = {
+            0.583f,  0.771f,  0.014f,
+            0.609f,  0.115f,  0.436f,
+            0.327f,  0.483f,  0.844f,
+            0.822f,  0.569f,  0.201f,
+            0.435f,  0.602f,  0.223f,
+            0.310f,  0.747f,  0.185f,
+            0.597f,  0.770f,  0.761f,
+            0.559f,  0.436f,  0.730f,
+            0.359f,  0.583f,  0.152f,
+            0.483f,  0.596f,  0.789f,
+            0.559f,  0.861f,  0.639f,
+            0.195f,  0.548f,  0.859f,
+            0.014f,  0.184f,  0.576f,
+            0.771f,  0.328f,  0.970f,
+            0.406f,  0.615f,  0.116f,
+            0.676f,  0.977f,  0.133f,
+            0.971f,  0.572f,  0.833f,
+            0.140f,  0.616f,  0.489f,
+            0.997f,  0.513f,  0.064f,
+            0.945f,  0.719f,  0.592f,
+            0.543f,  0.021f,  0.978f,
+            0.279f,  0.317f,  0.505f,
+            0.167f,  0.620f,  0.077f,
+            0.347f,  0.857f,  0.137f,
+            0.055f,  0.953f,  0.042f,
+            0.714f,  0.505f,  0.345f,
+            0.783f,  0.290f,  0.734f,
+            0.722f,  0.645f,  0.174f,
+            0.302f,  0.455f,  0.848f,
+            0.225f,  0.587f,  0.040f,
+            0.517f,  0.713f,  0.338f,
+            0.053f,  0.959f,  0.120f,
+            0.393f,  0.621f,  0.362f,
+            0.673f,  0.211f,  0.457f,
+            0.820f,  0.883f,  0.371f,
+            0.982f,  0.099f,  0.879f,
+        };
+
+        constexpr std::array vertex2BufferData = {
+            -1.f, -1.f, 0.f,
+            1.f, -1.f, 0.f,
+            0.f, 1.f, -.5f,
+
+            -1.f, -1.f, 0.f,
+            0.f, -1.f, -1.732f,
+            0.f, 1.f, -.5f,
+
+            1.f, -1.f, 0.f,
+            0.f, -1.f, -1.732f,
+            0.f, 1.f, -.5f,
+        };
+
+        // Create Buffers
 
         GLuint vertexBuffer;
         glGenBuffers(1, &vertexBuffer);
         glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
         glBufferData(GL_ARRAY_BUFFER, sizeof(vertexBufferData), vertexBufferData.data(), GL_STATIC_DRAW);
 
-        glClear(GL_COLOR_BUFFER_BIT);
-        glUseProgram(programID);
-        glUniformMatrix4fv(mvpID, 1, GL_FALSE, &mvp[0][0]);
+        GLuint vertex2Buffer;
+        glGenBuffers(1, &vertex2Buffer);
+        glBindBuffer(GL_ARRAY_BUFFER, vertex2Buffer);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertex2BufferData), vertex2BufferData.data(), GL_STATIC_DRAW);
 
-        glEnableVertexAttribArray(0);
-        glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
-        glDrawArrays(GL_TRIANGLES, 0, vertexBufferData.size() / 3);
-        glDisableVertexAttribArray(0);
+        GLuint colourBuffer;
+        glGenBuffers(1, &colourBuffer);
+        glBindBuffer(GL_ARRAY_BUFFER, colourBuffer);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(colourBufferData), colourBufferData.data(), GL_STATIC_DRAW);
+
+        // Draw To Screen
+
+        glClearColor(0.0f, 0.0f, 0.4f, 0.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glUseProgram(programID);
+
+        {
+            glEnableVertexAttribArray(0);
+            glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+
+            glEnableVertexAttribArray(1);
+            glBindBuffer(GL_ARRAY_BUFFER, colourBuffer);
+            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+
+            glUniformMatrix4fv(mvpID, 1, GL_FALSE, &mvp[0][0]);
+            glDrawArrays(GL_TRIANGLES, 0, vertexBufferData.size() / 3);
+            glDisableVertexAttribArray(0);
+            glDisableVertexAttribArray(1);
+        }
+        {
+            glEnableVertexAttribArray(0);
+            glBindBuffer(GL_ARRAY_BUFFER, vertex2Buffer);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+
+            glEnableVertexAttribArray(1);
+            glBindBuffer(GL_ARRAY_BUFFER, colourBuffer);
+            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+
+            glUniformMatrix4fv(mvpID, 1, GL_FALSE, &mvp2[0][0]);
+            glDrawArrays(GL_TRIANGLES, 0, vertex2BufferData.size() / 3);
+            glDisableVertexAttribArray(0);
+            glDisableVertexAttribArray(1);
+        }
+
         glfwSwapBuffers(window);
+
+        // Event Poll
 
         glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
         while (glfwWindowShouldClose(window) == 0 && glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS)
         {
             glfwPollEvents();
         }
+
+       	glDeleteBuffers(1, &vertexBuffer);
+        glDeleteBuffers(1, &vertex2Buffer);
+       	glDeleteBuffers(1, &colourBuffer);
+       	glDeleteProgram(programID);
+       	glDeleteVertexArrays(1, &vertexArrayID);
     }
     catch (std::exception const& e)
     {
